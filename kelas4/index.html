@@ -493,7 +493,7 @@
         </div>
         <div class="mb-3">
           <label class="form-label small fw-bold">Mata Pelajaran</label>
-          <select id="rekapFilterMapel" class="form-select form-select-sm">
+          <select id="rekapFilterMapel" class="form-select form-select-sm" onchange="muatKelasDariSheetHasil()">
             <option value="ALL">-- Semua Mata Pelajaran --</option>
           </select>
         </div>
@@ -1229,20 +1229,61 @@
       .then(res => {
         if (!res || !res.kelasList) return;
         const selMon = document.getElementById('monitorFilterKelas');
-        const selRek = document.getElementById('rekapFilterKelas');
         selMon.innerHTML = `<option value="ALL">-- Semua Kelas --</option>`;
-        selRek.innerHTML = `<option value="ALL">-- Semua Kelas --</option>`;
         res.kelasList.forEach(kls => {
           selMon.innerHTML += `<option value="${kls}">${kls}</option>`;
-          selRek.innerHTML += `<option value="${kls}">${kls}</option>`;
         });
       })
       .catch(err => console.error("Load kelas error:", err));
+  }
+
+  function muatKelasDariSheetHasil() {
+    const selRek = document.getElementById('rekapFilterKelas');
+    const selectedMapel = document.getElementById('rekapFilterMapel').value || "ALL";
+    const prevValue = selRek.value;
+
+    selRek.disabled = true;
+    selRek.innerHTML = `<option value="ALL">-- Memuat Kelas dari Sheet Hasil... --</option>`;
+
+    panggilGAS("getRekap", { filters: { mapel: selectedMapel, kelas: "ALL" } })
+      .then(res => {
+        selRek.disabled = false;
+        const rows = (res && res.rawData) ? res.rawData : [];
+        const kelasSet = new Set();
+
+        rows.forEach(row => {
+          if (Array.isArray(row) && row.length > 4 && row[4] !== null && row[4] !== undefined) {
+            const klsVal = String(row[4]).trim();
+            if (klsVal !== "") {
+              kelasSet.add(klsVal);
+            }
+          }
+        });
+
+        const sortedKelas = Array.from(kelasSet).sort((a, b) => a.localeCompare(b, 'id', { numeric: true }));
+        if (sortedKelas.length === 0) {
+          selRek.innerHTML = `<option value="ALL">-- Belum Ada Data Hasil Re-Sync --</option>`;
+        } else {
+          selRek.innerHTML = `<option value="ALL">-- Semua Kelas (${sortedKelas.length} Kelas) --</option>`;
+          sortedKelas.forEach(kls => {
+            selRek.innerHTML += `<option value="${kls}">${kls}</option>`;
+          });
+          if (sortedKelas.includes(prevValue)) {
+            selRek.value = prevValue;
+          }
+        }
+      })
+      .catch(err => {
+        selRek.disabled = false;
+        selRek.innerHTML = `<option value="ALL">-- Semua Kelas --</option>`;
+        console.error("Gagal memuat kelas dari sheet Hasil:", err);
+      });
   }
   function bukaModalUnduhRekap() {
     const modalEl = document.getElementById('modalUnduhRekap');
     const modal = new bootstrap.Modal(modalEl);
     modal.show();
+    muatKelasDariSheetHasil();
   }
   function eksekusiProsesUnduhRekap() {
     const btn = document.getElementById('btnProsesUnduhRekap');
