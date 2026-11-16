@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal CBT - SD Negeri 025 Balikpapan Tengah</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    body { background-color: #eef2f7; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    .portal-card { max-width: 520px; border-radius: 16px; border: none; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+    .btn-kelas { padding: 14px 20px; font-size: 1.1rem; border-radius: 12px; transition: transform 0.15s; }
+    .btn-kelas:hover { transform: translateY(-2px); }
+  </style>
+</head>
+<body class="d-flex justify-content-center align-items-center min-vh-100 p-3">
+  <div class="card portal-card p-4 p-md-5 w-100 text-center bg-white">
+    <i class="fa-solid fa-school fa-3x text-primary mb-3"></i>
+    <h4 class="fw-bold mb-1">SD Negeri 025</h4>
+    <p class="text-muted fw-bold mb-3">Balikpapan Tengah</p>
+    <hr>
+    <p class="text-secondary small mb-4">Silakan pilih ruang ujian sesuai tingkatan kelas masing-masing:</p>
+    <div class="d-grid gap-3">
+      <a href="./kelas4/" class="btn btn-primary fw-bold btn-kelas shadow-sm">
+        <i class="fa-solid fa-door-open me-2"></i> Masuk Ruang Ujian Kelas 4
+      </a>
+      <a href="./kelas5/" class="btn btn-success fw-bold btn-kelas shadow-sm">
+        <i class="fa-solid fa-door-open me-2"></i> Masuk Ruang Ujian Kelas 5
+      </a>
+      <a href="./kelas6/" class="btn btn-warning text-dark fw-bold btn-kelas shadow-sm">
+        <i class="fa-solid fa-door-open me-2"></i> Masuk Ruang Ujian Kelas 6
+      </a>
+    </div>
+  </div>
+</body>
+</html>
