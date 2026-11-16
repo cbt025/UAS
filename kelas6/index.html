@@ -51,12 +51,22 @@
       box-shadow: 0 10px 30px rgba(0,0,0,0.1); 
     }
     .btn-nav-soal { 
-      width: 42px; 
-      height: 42px; 
-      margin: 3px; 
+      width: 100%; 
+      height: 38px; 
+      padding: 0 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap !important;
+      line-height: 1;
       font-weight: bold; 
       border-radius: 8px; 
       font-size: 0.9rem;
+    }
+    #gridNavigasi {
+      display: grid !important;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 6px;
     }
     .soal-box { 
       background: white; 
@@ -117,14 +127,15 @@
       .soal-box { padding: 14px; border-radius: 10px; }
       #txtPertanyaanSoal { font-size: 0.98rem !important; line-height: 1.5; }
       .option-btn { padding: 10px 12px; font-size: 0.9rem; }
-      .btn-nav-soal { width: 35px; height: 35px; margin: 2px; font-size: 0.8rem; }
+      .btn-nav-soal { height: 38px; font-size: 0.9rem; border-radius: 8px; }
+      #gridNavigasi { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
       .card-login { padding: 20px !important; }
       .table-responsive { font-size: 0.8rem; }
     }
     @media (min-width: 576px) and (max-width: 991.98px) {
       .header-school { padding: 15px 20px; }
       .soal-box { padding: 20px; }
-      .btn-nav-soal { width: 40px; height: 40px; }
+      .btn-nav-soal { height: 38px; }
     }
   </style>
 </head>
@@ -220,9 +231,9 @@
     <div class="row g-3">
       <div class="col-lg-8">
         <div class="soal-box mb-3">
-          <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3">
-            <h6 class="fw-bold text-primary m-0" id="lblNomorSoal">Soal Nomor 1</h6>
-            <span class="badge bg-warning text-dark fw-bold fs-6" id="lblJenisSoal">Pilihan Ganda</span>
+          <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-3 gap-2">
+            <h6 class="fw-bold text-primary m-0 text-nowrap" id="lblNomorSoal" style="font-size: 0.95rem;">Soal Nomor 1</h6>
+            <span class="badge bg-warning text-dark fw-bold text-nowrap" id="lblJenisSoal" style="font-size: 0.78rem;">Pilihan Ganda</span>
           </div>
           <div id="txtPertanyaanSoal" class="fs-5 mb-4">Memuat soal...</div>
           <div id="containerOpsi"></div>
@@ -235,7 +246,7 @@
       <div class="col-lg-4">
         <div class="soal-box text-center">
           <h6 class="fw-bold mb-3 border-bottom pb-2">Navigasi Nomor Soal</h6>
-          <div id="gridNavigasi" class="d-flex flex-wrap justify-content-center mb-4"></div>
+          <div id="gridNavigasi" class="mb-4"></div>
           <div class="border-top pt-3">
             <button class="btn btn-success fw-bold w-100 py-2" id="btnKirimJawaban" onclick="bukaModalKonfirmasiKirim()"><i class="fa-solid fa-paper-plane me-1"></i> Kirim Jawaban Ujian</button>
           </div>
@@ -1058,7 +1069,7 @@
     const isPGK = (item.jenisSoal === "PGK");
     document.getElementById('lblNomorSoal').innerText = `Soal Nomor ${item.no} dari ${currentSoalData.length}`;
     document.getElementById('lblJenisSoal').innerText = isPGK ? "Pilihan Ganda Kompleks" : "Pilihan Ganda";
-    document.getElementById('lblJenisSoal').className = isPGK ? "badge bg-info text-dark fw-bold fs-6" : "badge bg-warning text-dark fw-bold fs-6";
+    document.getElementById('lblJenisSoal').className = isPGK ? "badge bg-info text-dark fw-bold text-nowrap" : "badge bg-warning text-dark fw-bold text-nowrap";
     document.getElementById('txtPertanyaanSoal').innerHTML = item.pertanyaan;
     const containerOpsi = document.getElementById('containerOpsi');
     containerOpsi.innerHTML = '';
@@ -1711,3 +1722,12 @@
 </script>
 </body>
 </html>
+Paket ZIP (Kelas 5 & Kelas 6 Revisi v2):
+
+
+CBT_Index_Kelas_5_dan_6_Revisi-v2
+ ZIP 
+Perubahan yang Diterapkan:
+Grid 5 Nomor per Baris (grid-template-columns: repeat(5, minmax(0, 1fr))): Setiap baris kini memuat tepat 5 kotak nomor soal (1–5, 6–10, 11–15, dst.) dengan jarak antar-kotak 6px, sehingga kotak tombol jauh lebih lebar dan seimbang baik di layar HP maupun layar komputer.
+
+Pengunci Angka 2 Digit (white-space: nowrap & height: 38px): Angka dua digit seperti 12, 25, atau 40 tidak akan terpecah menjadi dua baris (atas-bawah), melainkan tampil sejajar horizontal di tengah kotak dengan ukuran huruf 0.9rem yang jelas dan mudah ditekan jari di layar ponsel.
