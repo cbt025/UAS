@@ -509,7 +509,7 @@
         </div>
         <div class="mb-3">
           <label class="form-label small fw-bold">Mata Pelajaran</label>
-          <select id="rekapFilterMapel" class="form-select form-select-sm">
+          <select id="rekapFilterMapel" class="form-select form-select-sm" onchange="muatKelasDariSheetHasil()">
             <option value="ALL">-- Semua Mata Pelajaran --</option>
           </select>
         </div>
@@ -1301,21 +1301,62 @@
       .then(res => {
         if (!res || !res.kelasList) return;
         const selMon = document.getElementById('monitorFilterKelas');
-        const selRek = document.getElementById('rekapFilterKelas');
         selMon.innerHTML = `<option value="ALL">-- Semua Kelas --</option>`;
-        selRek.innerHTML = `<option value="ALL">-- Semua Kelas --</option>`;
         res.kelasList.forEach(kls => {
           selMon.innerHTML += `<option value="${kls}">${kls}</option>`;
-          selRek.innerHTML += `<option value="${kls}">${kls}</option>`;
         });
       })
       .catch(err => console.error("Load kelas error:", err));
+  }
+
+  function muatKelasDariSheetHasil() {
+    const selRek = document.getElementById('rekapFilterKelas');
+    const selectedMapel = document.getElementById('rekapFilterMapel').value || "ALL";
+    const prevValue = selRek.value;
+
+    selRek.disabled = true;
+    selRek.innerHTML = `<option value="ALL">-- Memuat Kelas dari Sheet Hasil... --</option>`;
+
+    panggilGAS("getRekap", { filters: { mapel: selectedMapel, kelas: "ALL" } })
+      .then(res => {
+        selRek.disabled = false;
+        const rows = (res && res.rawData) ? res.rawData : [];
+        const kelasSet = new Set();
+
+        rows.forEach(row => {
+          if (Array.isArray(row) && row.length > 4 && row[4] !== null && row[4] !== undefined) {
+            const klsVal = String(row[4]).trim();
+            if (klsVal !== "") {
+              kelasSet.add(klsVal);
+            }
+          }
+        });
+
+        const sortedKelas = Array.from(kelasSet).sort((a, b) => a.localeCompare(b, 'id', { numeric: true }));
+        if (sortedKelas.length === 0) {
+          selRek.innerHTML = `<option value="ALL">-- Belum Ada Data Hasil Re-Sync --</option>`;
+        } else {
+          selRek.innerHTML = `<option value="ALL">-- Semua Kelas (${sortedKelas.length} Kelas) --</option>`;
+          sortedKelas.forEach(kls => {
+            selRek.innerHTML += `<option value="${kls}">${kls}</option>`;
+          });
+          if (sortedKelas.includes(prevValue)) {
+            selRek.value = prevValue;
+          }
+        }
+      })
+      .catch(err => {
+        selRek.disabled = false;
+        selRek.innerHTML = `<option value="ALL">-- Semua Kelas --</option>`;
+        console.error("Gagal memuat kelas dari sheet Hasil:", err);
+      });
   }
 
   function bukaModalUnduhRekap() {
     const modalEl = document.getElementById('modalUnduhRekap');
     const modal = new bootstrap.Modal(modalEl);
     modal.show();
+    muatKelasDariSheetHasil();
   }
 
   function eksekusiProsesUnduhRekap() {
@@ -1722,12 +1763,3 @@
 </script>
 </body>
 </html>
-Paket ZIP (Kelas 5 & Kelas 6 Revisi v2):
-
-
-CBT_Index_Kelas_5_dan_6_Revisi-v2
- ZIP 
-Perubahan yang Diterapkan:
-Grid 5 Nomor per Baris (grid-template-columns: repeat(5, minmax(0, 1fr))): Setiap baris kini memuat tepat 5 kotak nomor soal (1–5, 6–10, 11–15, dst.) dengan jarak antar-kotak 6px, sehingga kotak tombol jauh lebih lebar dan seimbang baik di layar HP maupun layar komputer.
-
-Pengunci Angka 2 Digit (white-space: nowrap & height: 38px): Angka dua digit seperti 12, 25, atau 40 tidak akan terpecah menjadi dua baris (atas-bawah), melainkan tampil sejajar horizontal di tengah kotak dengan ukuran huruf 0.9rem yang jelas dan mudah ditekan jari di layar ponsel.
