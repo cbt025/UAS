@@ -660,7 +660,7 @@
     if (jamSelesaiAktif && jamSelesaiAktif.includes(':')) {
       const [hS, mS] = jamSelesaiAktif.split(':').map(Number);
       const endMinutes = hS * 60 + mS;
-      if (nowMinutes >= endMinutes) {
+      if (nowMinutes > endMinutes) {
         return {
           valid: false,
           alasan: `Waktu ujian hari ini telah berakhir pada pukul ${jamSelesaiAktif} WITA.`,
