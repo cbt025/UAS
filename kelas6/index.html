@@ -472,17 +472,22 @@
       </div>
       <div class="modal-body">
         <div class="card p-3 mb-3 bg-light border-0 shadow-sm">
-          <h6 class="fw-bold text-primary mb-2"><i class="fa-solid fa-clock me-1"></i> Pengaturan Jam Akses Siswa (Jadwal)</h6>
+          <h6 class="fw-bold text-primary mb-2"><i class="fa-solid fa-calendar-check me-1"></i> Pengaturan Tanggal & Jam Akses Siswa (Jadwal Hari Ini)</h6>
           <div class="row g-2">
-            <div class="col-md-6">
+            <div class="col-md-4">
+              <label class="form-label small fw-bold">Tanggal Pelaksanaan</label>
+              <input type="date" id="inputTanggalUjian" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-4">
               <label class="form-label small fw-bold">Jam Mulai Ujian</label>
               <input type="time" id="inputJamMulai" class="form-control form-control-sm">
             </div>
-            <div class="col-md-6">
+            <div class="col-md-4">
               <label class="form-label small fw-bold">Jam Selesai Ujian</label>
               <input type="time" id="inputJamSelesai" class="form-control form-control-sm">
             </div>
           </div>
+          <small class="text-muted mt-1 d-block">*Jadwal otomatis mengikuti tanggal hari ini jika tidak diubah. Siswa hanya dapat mengakses ujian pada tanggal dan rentang jam tersebut.</small>
         </div>
         <h6 class="fw-bold text-primary mb-2"><i class="fa-solid fa-book-bookmark me-1"></i> Aktifkan Mata Pelajaran Ujian</h6>
         <div class="row g-2" id="containerAktivasiGuru"></div>
@@ -624,10 +629,113 @@
   let timerInterval = null;
   let secondsElapsed = 0;
   let activeMapels = [];
+  let tanggalUjianAktif = "";
   let jamMulaiAktif = "";
   let jamSelesaiAktif = "";
   let currentMapelUjian = '';
-  let sedangUjianAktif = false; 
+  let sedangUjianAktif = false;
+  let configRealtimeRef = null;
+  let autoSubmitSedangBerjalan = false;
+
+  function getTodayLocalISO() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function formatTanggalIndo(isoDate) {
+    if (!isoDate || !isoDate.includes('-')) return isoDate || "Hari Ini";
+    const parts = isoDate.split('-');
+    const bulan = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    const bIdx = parseInt(parts[1], 10) - 1;
+    return `${parseInt(parts[2], 10)} ${bulan[bIdx] || parts[1]} ${parts[0]}`;
+  }
+
+  function cekValidasiJadwalSekarang() {
+    const todayStr = getTodayLocalISO();
+    const targetDate = tanggalUjianAktif || todayStr;
+
+    // 1. Cek kesesuaian tanggal hari ini
+    if (targetDate !== todayStr) {
+      return {
+        valid: false,
+        alasan: `Ujian dijadwalkan pada tanggal ${formatTanggalIndo(targetDate)}, bukan hari ini (${formatTanggalIndo(todayStr)}).`,
+        isExpired: targetDate < todayStr
+      };
+    }
+
+    // 2. Cek rentang jam mulai & jam selesai
+    const now = new Date();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+    if (jamMulaiAktif && jamMulaiAktif.includes(':')) {
+      const [hM, mM] = jamMulaiAktif.split(':').map(Number);
+      const startMinutes = hM * 60 + mM;
+      if (nowMinutes < startMinutes) {
+        return {
+          valid: false,
+          alasan: `Sesi ujian hari ini belum dimulai. Jadwal dimulai pukul ${jamMulaiAktif} WITA.`,
+          isExpired: false
+        };
+      }
+    }
+
+    if (jamSelesaiAktif && jamSelesaiAktif.includes(':')) {
+      const [hS, mS] = jamSelesaiAktif.split(':').map(Number);
+      const endMinutes = hS * 60 + mS;
+      if (nowMinutes >= endMinutes) {
+        return {
+          valid: false,
+          alasan: `Waktu ujian hari ini telah berakhir pada pukul ${jamSelesaiAktif} WITA.`,
+          isExpired: true
+        };
+      }
+    }
+
+    return { valid: true, alasan: "", isExpired: false };
+  }
+
+  function pasangListenerConfigRealtimeSiswa() {
+    if (configRealtimeRef) configRealtimeRef.off();
+    configRealtimeRef = db.ref(APP_PROFILE.kelasNode + '/Config_Ujian');
+    configRealtimeRef.on('value', function(snapshot) {
+      const cfg = snapshot.val();
+      if (!cfg) return;
+
+      activeMapels = Array.isArray(cfg.activeMapels) ? cfg.activeMapels : [];
+      tanggalUjianAktif = cfg.tanggalUjian || tanggalUjianAktif || getTodayLocalISO();
+      jamMulaiAktif = cfg.jamMulai !== undefined ? cfg.jamMulai : jamMulaiAktif;
+      jamSelesaiAktif = cfg.jamSelesai !== undefined ? cfg.jamSelesai : jamSelesaiAktif;
+
+      if (!document.getElementById('view-select-mapel').classList.contains('d-none')) {
+        updateTeksJadwalSiswa();
+        renderKartuMapelSiswa();
+      }
+
+      if (sedangUjianAktif && currentMapelUjian) {
+        const isMapelMasihAktif = activeMapels.includes(currentMapelUjian);
+        const statusJadwal = cekValidasiJadwalSekarang();
+
+        if (!isMapelMasihAktif) {
+          pemicuAutoSubmitOtomatis("Mata pelajaran dinonaktifkan oleh Guru/Pengawas.");
+        } else if (statusJadwal.isExpired) {
+          pemicuAutoSubmitOtomatis("Waktu pelaksanaan ujian telah habis.");
+        }
+      }
+    });
+  }
+
+  function pemicuAutoSubmitOtomatis(alasan) {
+    if (autoSubmitSedangBerjalan || !sedangUjianAktif) return;
+    autoSubmitSedangBerjalan = true;
+    tampilkanPeringatanModal("PERHATIAN: " + alasan + " Jawaban Anda sedang dikirimkan secara otomatis!");
+    setTimeout(() => {
+      eksekusiKirimJawabanFinal(true, alasan);
+      autoSubmitSedangBerjalan = false;
+    }, 1200);
+  } 
   let currentPage = 1;
   let pageSize = 100; 
   let rawMonitorDataCache = [];
@@ -743,6 +851,7 @@
           if (res && !res.error) {
             userSession = res;
             activeMapels = res.mapelAktif || [];
+            tanggalUjianAktif = res.tanggalUjian || getTodayLocalISO();
             jamMulaiAktif = res.jamMulai || "";
             jamSelesaiAktif = res.jamSelesai || "";
             document.getElementById('view-login').classList.add('d-none');
@@ -769,6 +878,7 @@
                   sedangUjianAktif = true;
                   pasangProteksiSesiGanda(userSession.nisn);
                   pasangListenerStatusBlokirSiswa();
+                  pasangListenerConfigRealtimeSiswa();
                   renderNavigasi();
                   renderSoal(currentSoalIndex);
                   startTimer(secondsElapsed);
@@ -779,6 +889,7 @@
               }
               initHalamanSiswa();
               pasangProteksiSesiGanda(userSession.nisn);
+              pasangListenerConfigRealtimeSiswa();
             }
           }
         })
@@ -883,6 +994,7 @@
         } else {
           userSession = res;
           activeMapels = res.mapelAktif || [];
+          tanggalUjianAktif = res.tanggalUjian || getTodayLocalISO();
           jamMulaiAktif = res.jamMulai || "";
           jamSelesaiAktif = res.jamSelesai || "";
           localStorage.setItem(APP_PROFILE.storagePrefix + 'nisn', nisnInput);
@@ -894,6 +1006,7 @@
           } else {
             initHalamanSiswa();
             pasangProteksiSesiGanda(res.nisn);
+            pasangListenerConfigRealtimeSiswa();
           }
         }
       })
@@ -908,6 +1021,7 @@
     sedangUjianAktif = false;
     if (timerInterval) clearInterval(timerInterval);
     if (statusBlockRef) statusBlockRef.off();
+    if (configRealtimeRef) configRealtimeRef.off();
     if (sessionTokenRef) {
       sessionTokenRef.remove();
       sessionTokenRef.off();
@@ -928,12 +1042,17 @@
     document.getElementById('userGreeting').innerText = "Siswa: " + (userSession.nama || "-") + " | " + kelasSiswa;
     document.getElementById('badgeKelasSiswa').innerText = kelasSiswa;
 
-    if (jamMulaiAktif && jamSelesaiAktif) {
-      document.getElementById('txtJadwalInfo').innerText = `Jadwal Ujian Aktif: Pukul ${jamMulaiAktif} s/d ${jamSelesaiAktif} WITA`;
-    } else {
-      document.getElementById('txtJadwalInfo').innerText = "Jadwal Ujian Aktif: Sesuai Jadwal Sekolah";
-    }
+    updateTeksJadwalSiswa();
     renderKartuMapelSiswa();
+  }
+
+  function updateTeksJadwalSiswa() {
+    const tglLabel = formatTanggalIndo(tanggalUjianAktif || getTodayLocalISO());
+    if (jamMulaiAktif && jamSelesaiAktif) {
+      document.getElementById('txtJadwalInfo').innerText = `Jadwal Ujian Aktif: ${tglLabel} | Pukul ${jamMulaiAktif} s/d ${jamSelesaiAktif} WITA`;
+    } else {
+      document.getElementById('txtJadwalInfo').innerText = `Jadwal Ujian Aktif: ${tglLabel} (Sesuai Jadwal Sekolah)`;
+    }
   }
 
   function renderKartuMapelSiswa() {
@@ -979,6 +1098,17 @@
   }
 
   function mulaiUjianMapel(mapel) {
+    const cekJadwal = cekValidasiJadwalSekarang();
+    if (!cekJadwal.valid) {
+      tampilkanPeringatanModal(cekJadwal.alasan);
+      return;
+    }
+    if (!activeMapels.includes(mapel)) {
+      tampilkanPeringatanModal("Mata pelajaran ini sedang tidak aktif atau telah ditutup oleh Guru.");
+      renderKartuMapelSiswa();
+      return;
+    }
+
     const mapelClean = getAliasMapel(mapel);
     const nisnClean = String(userSession.nisn).trim();
     currentMapelUjian = mapel;
@@ -1155,6 +1285,13 @@
       let secs = secondsElapsed % 60;
       document.getElementById('txtTimer').innerHTML = `<i class="fa-solid fa-clock me-1"></i> ${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
       if (secondsElapsed % 5 === 0) simpanStateUjianSiswa();
+
+      if (sedangUjianAktif) {
+        const statusJadwal = cekValidasiJadwalSekarang();
+        if (statusJadwal.isExpired) {
+          pemicuAutoSubmitOtomatis("Waktu ujian telah habis sesuai jadwal (" + (jamSelesaiAktif || "selesai") + ").");
+        }
+      }
     }, 1000);
   }
 
@@ -1179,10 +1316,12 @@
     if (modal) modal.hide();
   }
 
-  function eksekusiKirimJawabanFinal() {
+  function eksekusiKirimJawabanFinal(isAutoSubmit = false, alasanAuto = "") {
     const modalEl = document.getElementById('modalConfirmSubmit');
-    const modal = bootstrap.Modal.getInstance(modalEl);
-    if (modal) modal.hide();
+    if (modalEl) {
+      const modal = bootstrap.Modal.getInstance(modalEl);
+      if (modal) modal.hide();
+    }
     sedangUjianAktif = false;
     if (timerInterval) clearInterval(timerInterval);
     if (statusBlockRef) statusBlockRef.off();
@@ -1256,7 +1395,11 @@
     document.getElementById('view-soal').classList.add('d-none');
     document.getElementById('view-hasil-siswa').classList.remove('d-none');
     document.getElementById('resDurasi').innerText = payload.durasi;
-    tampilkanToast("Jawaban Berhasil Terkirim!");
+    if (isAutoSubmit) {
+      tampilkanToast("Jawaban Otomatis Terkirim (" + (alasanAuto || "Waktu Habis / Mapel Ditutup") + ")");
+    } else {
+      tampilkanToast("Jawaban Berhasil Terkirim!");
+    }
     bersihkanSemuaStateLokalTotal();
   }
 
@@ -1270,8 +1413,11 @@
     filterMapelMon.innerHTML = `<option value="ALL">-- Semua Mapel --</option>`;
     rekapMapelMon.innerHTML = `<option value="ALL">-- Semua Mata Pelajaran --</option>`;
     
+    const todayISO = getTodayLocalISO();
+    document.getElementById('inputTanggalUjian').value = (tanggalUjianAktif === todayISO) ? tanggalUjianAktif : todayISO;
     document.getElementById('inputJamMulai').value = jamMulaiAktif || "";
     document.getElementById('inputJamSelesai').value = jamSelesaiAktif || "";
+    updateRingkasanAktivasiGuru();
 
     listMapel.forEach(m => {
       filterMapelMon.innerHTML += `<option value="${m}">${m}</option>`;
@@ -1740,25 +1886,42 @@
     });
   }
 
+  function updateRingkasanAktivasiGuru() {
+    const el = document.getElementById('txtStatusAktivasiRingkas');
+    if (!el) return;
+    const tglStr = formatTanggalIndo(tanggalUjianAktif || getTodayLocalISO());
+    const jamStr = (jamMulaiAktif && jamSelesaiAktif) ? `${jamMulaiAktif} - ${jamSelesaiAktif} WITA` : "Tanpa Batas Jam";
+    const mapelStr = activeMapels.length > 0 ? activeMapels.join(", ") : "Tidak ada mapel aktif";
+    el.innerHTML = `<strong>Tanggal:</strong> ${tglStr} | <strong>Jam:</strong> ${jamStr} | <strong>Aktif:</strong> ${mapelStr}`;
+  }
+
   function simpanAktivasiMapel() {
     let selected = [];
     document.querySelectorAll('.chk-mapel-guru:checked').forEach(c => selected.push(c.value));
     activeMapels = selected;
+    tanggalUjianAktif = document.getElementById('inputTanggalUjian').value || getTodayLocalISO();
     jamMulaiAktif = document.getElementById('inputJamMulai').value;
     jamSelesaiAktif = document.getElementById('inputJamSelesai').value;
+
     const payloadConfig = {
       activeMapels: selected,
+      tanggalUjian: tanggalUjianAktif,
       jamMulai: jamMulaiAktif,
-      jamSelesai: jamSelesaiAktif
+      jamSelesai: jamSelesaiAktif,
+      updatedAt: Date.now()
     };
+
+    db.ref(APP_PROFILE.kelasNode + '/Config_Ujian').set(payloadConfig);
+
     panggilGAS("setMataPelajaranAktif", { payloadConfig: payloadConfig })
       .then(() => {
+        updateRingkasanAktivasiGuru();
         const modalEl = document.getElementById('modalAktivasiMapel');
         const modal = bootstrap.Modal.getInstance(modalEl);
         if (modal) modal.hide();
-        tampilkanToast("Pengaturan Aktivasi Mapel & Jadwal Berhasil Disimpan!");
+        tampilkanToast("Pengaturan Aktivasi Mapel & Jadwal Hari Ini Berhasil Disimpan!");
       })
-      .catch(err => tampilkanPeringatanModal("Gagal menyimpan: " + err.message));
+      .catch(err => tampilkanPeringatanModal("Gagal menyimpan ke server: " + err.message));
   }
 </script>
 </body>
