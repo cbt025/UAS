@@ -21,12 +21,21 @@
       user-select: none; 
       -webkit-user-select: none;
     }
-    #txtPertanyaanSoal img, 
-    .option-btn img {
-      max-width: 100% !important;
+    /* Ukuran otomatis untuk gambar di dalam Pertanyaan */
+    #txtPertanyaanSoal img {
+      max-width: min(400px, 100%) !important;
       height: auto !important;
       display: block;
-      margin: 8px 0;
+      margin: 10px 0;
+      border-radius: 6px;
+    }
+
+    /* Ukuran otomatis untuk gambar di dalam Pilihan Jawaban (A/B/C/D) */
+    .option-btn img {
+      max-width: min(180px, 100%) !important;
+      height: auto !important;
+      display: block;
+      margin: 6px 0;
       border-radius: 6px;
     }
     #txtPertanyaanSoal table,
