@@ -700,15 +700,32 @@
     });
   }
 
-  function pemicuAutoSubmitOtomatis(alasan) {
+function pemicuAutoSubmitOtomatis(alasan) {
     if (autoSubmitSedangBerjalan || !sedangUjianAktif) return;
     autoSubmitSedangBerjalan = true;
-    tampilkanPeringatanModal("PERHATIAN: " + alasan + " Jawaban Anda sedang dikirimkan secara otomatis!");
-    setTimeout(() => {
-      eksekusiKirimJawabanFinal(true, alasan);
-      autoSubmitSedangBerjalan = false;
-    }, 1200);
-  } 
+
+    // Tutup modal konfirmasi jika siswa kebetulan sedang membukanya
+    const modalConfirmEl = document.getElementById('modalConfirmSubmit');
+    if (modalConfirmEl) {
+      const mConfirm = bootstrap.Modal.getInstance(modalConfirmEl);
+      if (mConfirm) mConfirm.hide();
+    }
+
+    // Langsung kirim jawaban final tanpa menunggu jeda lama
+    eksekusiKirimJawabanFinal(true, alasan);
+    tampilkanPeringatanModal("WAKTU UJIAN BERAKHIR: " + alasan + " Jawaban Anda telah dikirimkan secara otomatis ke server.");
+    autoSubmitSedangBerjalan = false;
+  }
+
+  // Tambahan: Cek otomatis saat layar HP/Browser kembali aktif
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden && sedangUjianAktif && userSession && userSession.role === 'siswa') {
+      const statusJadwal = cekValidasiJadwalSekarang();
+      if (statusJadwal.isExpired) {
+        pemicuAutoSubmitOtomatis("Waktu ujian telah habis (" + (jamSelesaiAktif || "selesai") + " WITA).");
+      }
+    }
+  });
   let currentPage = 1;
   let pageSize = 100; 
   let rawMonitorDataCache = [];
