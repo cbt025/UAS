@@ -611,7 +611,6 @@
   let sedangUjianAktif = false;
   let configRealtimeRef = null;
   let autoSubmitSedangBerjalan = false;
-
   function getTodayLocalISO() {
     const now = new Date();
     const y = now.getFullYear();
@@ -619,7 +618,6 @@
     const d = String(now.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
   }
-
   function formatTanggalIndo(isoDate) {
     if (!isoDate || !isoDate.includes('-')) return isoDate || "Hari Ini";
     const parts = isoDate.split('-');
@@ -627,7 +625,16 @@
     const bIdx = parseInt(parts[1], 10) - 1;
     return `${parseInt(parts[2], 10)} ${bulan[bIdx] || parts[1]} ${parts[0]}`;
   }
-
+  function ekstrakJamMenit(rawJam) {
+    if (!rawJam) return null;
+    const str = String(rawJam).trim();
+    const match = str.match(/(\d{1,2})[:.](\d{2})/);
+    if (!match) return null;
+    return {
+      jam: parseInt(match[1], 10),
+      menit: parseInt(match[2], 10)
+    };
+  }
   function cekValidasiJadwalSekarang() {
     const todayStr = getTodayLocalISO();
     const targetDate = tanggalUjianAktif || todayStr;
@@ -643,9 +650,9 @@
     const now = new Date();
     const nowTotalSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
 
-    if (jamMulaiAktif && jamMulaiAktif.includes(':')) {
-      const [hM, mM] = jamMulaiAktif.split(':').map(Number);
-      const startTotalSeconds = hM * 3600 + mM * 60;
+    const waktuMulai = ekstrakJamMenit(jamMulaiAktif);
+    if (waktuMulai) {
+      const startTotalSeconds = waktuMulai.jam * 3600 + waktuMulai.menit * 60;
       if (nowTotalSeconds < startTotalSeconds) {
         return {
           valid: false,
@@ -655,10 +662,9 @@
       }
     }
 
-    if (jamSelesaiAktif && jamSelesaiAktif.includes(':')) {
-      const [hS, mS] = jamSelesaiAktif.split(':').map(Number);
-      // Tepat saat jam selesai (misal 10:25:00), waktu dinyatakan habis
-      const endTotalSeconds = hS * 3600 + mS * 60;
+    const waktuSelesai = ekstrakJamMenit(jamSelesaiAktif);
+    if (waktuSelesai) {
+      const endTotalSeconds = waktuSelesai.jam * 3600 + waktuSelesai.menit * 60;
       if (nowTotalSeconds >= endTotalSeconds) {
         return {
           valid: false,
@@ -669,57 +675,58 @@
     }
     return { valid: true, alasan: "", isExpired: false };
   }
-
   function pasangListenerConfigRealtimeSiswa() {
     if (configRealtimeRef) configRealtimeRef.off();
     configRealtimeRef = db.ref(APP_PROFILE.kelasNode + '/Config_Ujian');
     configRealtimeRef.on('value', function(snapshot) {
       const cfg = snapshot.val();
       if (!cfg) return;
-
       activeMapels = Array.isArray(cfg.activeMapels) ? cfg.activeMapels : [];
       tanggalUjianAktif = cfg.tanggalUjian || tanggalUjianAktif || getTodayLocalISO();
       jamMulaiAktif = cfg.jamMulai !== undefined ? cfg.jamMulai : jamMulaiAktif;
       jamSelesaiAktif = cfg.jamSelesai !== undefined ? cfg.jamSelesai : jamSelesaiAktif;
-
       if (!document.getElementById('view-select-mapel').classList.contains('d-none')) {
         updateTeksJadwalSiswa();
         renderKartuMapelSiswa();
       }
-
       if (sedangUjianAktif && currentMapelUjian) {
         const isMapelMasihAktif = activeMapels.includes(currentMapelUjian);
         const statusJadwal = cekValidasiJadwalSekarang();
-
         if (!isMapelMasihAktif) {
           pemicuAutoSubmitOtomatis("Mata pelajaran dinonaktifkan oleh Guru/Pengawas.");
         } else if (statusJadwal.isExpired) {
-          pemicuAutoSubmitOtomatis("Waktu pelaksanaan ujian telah habis.");
+          pemicuAutoSubmitOtomatis("Waktu pelaksanaan ujian telah habis (" + (jamSelesaiAktif || "selesai") + " WITA).");
         }
       }
     });
   }
-
-function pemicuAutoSubmitOtomatis(alasan) {
+  function pemicuAutoSubmitOtomatis(alasan) {
     if (autoSubmitSedangBerjalan || !sedangUjianAktif) return;
     autoSubmitSedangBerjalan = true;
+    sedangUjianAktif = false; // Kunci langsung agar event blur tidak memicu blokir palsu
 
-    // Tutup modal konfirmasi jika siswa kebetulan sedang membukanya
-    const modalConfirmEl = document.getElementById('modalConfirmSubmit');
-    if (modalConfirmEl) {
-      const mConfirm = bootstrap.Modal.getInstance(modalConfirmEl);
-      if (mConfirm) mConfirm.hide();
-    }
+    // Tutup paksa modal apa pun yang sedang terbuka
+    ['modalConfirmSubmit', 'modalPeringatanCustom'].forEach(idModal => {
+      const el = document.getElementById(idModal);
+      if (el) {
+        const inst = bootstrap.Modal.getInstance(el);
+        if (inst) inst.hide();
+      }
+    });
 
-    // Langsung kirim jawaban final tanpa menunggu jeda lama
+    const overlay = document.getElementById('blockedOverlay');
+    if (overlay) overlay.classList.add('d-none');
+
     eksekusiKirimJawabanFinal(true, alasan);
-    tampilkanPeringatanModal("WAKTU UJIAN BERAKHIR: " + alasan + " Jawaban Anda telah dikirimkan secara otomatis ke server.");
-    autoSubmitSedangBerjalan = false;
-  }
 
-  // Tambahan: Cek otomatis saat layar HP/Browser kembali aktif
+    setTimeout(() => {
+      tampilkanPeringatanModal("WAKTU UJIAN SELESAI: " + alasan + " Seluruh jawaban Anda telah otomatis dikirimkan dan tersimpan.");
+      autoSubmitSedangBerjalan = false;
+    }, 350);
+  }
+  // Cek otomatis saat layar HP / tab browser kembali aktif dari sleep
   document.addEventListener('visibilitychange', function() {
-    if (!document.hidden && sedangUjianAktif && userSession && userSession.role === 'siswa') {
+    if (!document.hidden && sedangUjianAktif && !autoSubmitSedangBerjalan && userSession && userSession.role === 'siswa') {
       const statusJadwal = cekValidasiJadwalSekarang();
       if (statusJadwal.isExpired) {
         pemicuAutoSubmitOtomatis("Waktu ujian telah habis (" + (jamSelesaiAktif || "selesai") + " WITA).");
@@ -904,8 +911,13 @@ function pemicuAutoSubmitOtomatis(alasan) {
     });
   }
   window.addEventListener('blur', function() {
-    if (sedangUjianAktif && userSession && userSession.role === 'siswa') {
-      pemicuBlokirKecuranganSiswa("Meninggalkan Halaman Ujian / Pindah Tab");
+    if (sedangUjianAktif && !autoSubmitSedangBerjalan && userSession && userSession.role === 'siswa') {
+      const statusJadwal = cekValidasiJadwalSekarang();
+      if (statusJadwal.isExpired) {
+        pemicuAutoSubmitOtomatis("Waktu ujian telah habis (" + (jamSelesaiAktif || "selesai") + " WITA).");
+      } else {
+        pemicuBlokirKecuranganSiswa("Meninggalkan Halaman Ujian / Pindah Tab");
+      }
     }
   });
   function pemicuBlokirKecuranganSiswa(alasan) {
@@ -1018,7 +1030,6 @@ function pemicuAutoSubmitOtomatis(alasan) {
     updateTeksJadwalSiswa();
     renderKartuMapelSiswa();
   }
-
   function updateTeksJadwalSiswa() {
     const tglLabel = formatTanggalIndo(tanggalUjianAktif || getTodayLocalISO());
     if (jamMulaiAktif && jamSelesaiAktif) {
@@ -1077,7 +1088,6 @@ function pemicuAutoSubmitOtomatis(alasan) {
       renderKartuMapelSiswa();
       return;
     }
-
     const mapelClean = getAliasMapel(mapel);
     const nisnClean = String(userSession.nisn).trim();
     currentMapelUjian = mapel;
@@ -1240,11 +1250,10 @@ function pemicuAutoSubmitOtomatis(alasan) {
       let secs = secondsElapsed % 60;
       document.getElementById('txtTimer').innerHTML = `<i class="fa-solid fa-clock me-1"></i> ${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
       if (secondsElapsed % 5 === 0) simpanStateUjianSiswa();
-
       if (sedangUjianAktif) {
         const statusJadwal = cekValidasiJadwalSekarang();
         if (statusJadwal.isExpired) {
-          pemicuAutoSubmitOtomatis("Waktu ujian telah habis sesuai jadwal (" + (jamSelesaiAktif || "selesai") + ").");
+          pemicuAutoSubmitOtomatis("Waktu ujian telah habis sesuai jadwal (" + (jamSelesaiAktif || "selesai") + " WITA).");
         }
       }
     }, 1000);
@@ -1336,9 +1345,9 @@ function pemicuAutoSubmitOtomatis(alasan) {
       status: "Selesai",
       timestamp: firebase.database.ServerValue.TIMESTAMP
     };
-    try {
-      db.ref(APP_PROFILE.kelasNode + '/Hasil_Ujian/' + mapelClean + '/' + nisnClean).update(payload);
-    } catch(e){}
+
+    const kirimPromise = db.ref(APP_PROFILE.kelasNode + '/Hasil_Ujian/' + mapelClean + '/' + nisnClean).update(payload);
+
     document.getElementById('view-soal').classList.add('d-none');
     document.getElementById('view-hasil-siswa').classList.remove('d-none');
     document.getElementById('resDurasi').innerText = payload.durasi;
@@ -1347,7 +1356,10 @@ function pemicuAutoSubmitOtomatis(alasan) {
     } else {
       tampilkanToast("Jawaban Berhasil Terkirim!");
     }
-    bersihkanSemuaStateLokalTotal();
+
+    kirimPromise.finally(() => {
+      bersihkanSemuaStateLokalTotal();
+    });
   }
   function initHalamanGuru() {
     document.getElementById('view-guru').classList.remove('d-none');
@@ -1360,7 +1372,7 @@ function pemicuAutoSubmitOtomatis(alasan) {
     rekapMapelMon.innerHTML = `<option value="ALL">-- Semua Mata Pelajaran --</option>`;
     
     const todayISO = getTodayLocalISO();
-    document.getElementById('inputTanggalUjian').value = (tanggalUjianAktif === todayISO) ? tanggalUjianAktif : todayISO;
+    document.getElementById('inputTanggalUjian').value = tanggalUjianAktif || todayISO;
     document.getElementById('inputJamMulai').value = jamMulaiAktif || "";
     document.getElementById('inputJamSelesai').value = jamSelesaiAktif || "";
     updateRingkasanAktivasiGuru();
@@ -1397,21 +1409,17 @@ function pemicuAutoSubmitOtomatis(alasan) {
       })
       .catch(err => console.error("Load kelas error:", err));
   }
-
   function muatKelasDariSheetHasil() {
     const selRek = document.getElementById('rekapFilterKelas');
     const selectedMapel = document.getElementById('rekapFilterMapel').value || "ALL";
     const prevValue = selRek.value;
-
     selRek.disabled = true;
     selRek.innerHTML = `<option value="ALL">-- Memuat Kelas dari Sheet Hasil... --</option>`;
-
     panggilGAS("getRekap", { filters: { mapel: selectedMapel, kelas: "ALL" } })
       .then(res => {
         selRek.disabled = false;
         const rows = (res && res.rawData) ? res.rawData : [];
         const kelasSet = new Set();
-
         rows.forEach(row => {
           if (Array.isArray(row) && row.length > 4 && row[4] !== null && row[4] !== undefined) {
             const klsVal = String(row[4]).trim();
@@ -1420,7 +1428,6 @@ function pemicuAutoSubmitOtomatis(alasan) {
             }
           }
         });
-
         const sortedKelas = Array.from(kelasSet).sort((a, b) => a.localeCompare(b, 'id', { numeric: true }));
         if (sortedKelas.length === 0) {
           selRek.innerHTML = `<option value="ALL">-- Belum Ada Data Hasil Re-Sync --</option>`;
@@ -1621,7 +1628,6 @@ function pemicuAutoSubmitOtomatis(alasan) {
           }
         });
       }
-      // Sinkronkan opsi dropdown Kelas jika ada kelas baru muncul dari stream
       const selMon = document.getElementById('monitorFilterKelas');
       const currentVal = selMon.value;
       Array.from(kelasSet).sort().forEach(kls => {
@@ -1671,9 +1677,9 @@ function pemicuAutoSubmitOtomatis(alasan) {
       const isBlocked = (item.status.indexOf('Diblokir') !== -1 || item.status.indexOf('Blokir') !== -1);
       if (isBlocked) badgeColor = 'danger';
       else if (item.status === 'Sedang Mengerjakan') badgeColor = 'warning text-dark';
-      const safeNama = String(item.namaSiswa || '').replace(/'/g, "\\'");
-      const safeMapel = String(item.mapel || '').replace(/'/g, "\\'");
-      const safeStatus = String(item.status || '').replace(/'/g, "\\'");
+      const safeNama = String(item.namaSiswa || '').replace(/'/g, "\'");
+      const safeMapel = String(item.mapel || '').replace(/'/g, "\'");
+      const safeStatus = String(item.status || '').replace(/'/g, "\'");
       tbody.innerHTML += `
         <tr>
           <td>${startIndex + index + 1}</td>
@@ -1802,7 +1808,6 @@ function pemicuAutoSubmitOtomatis(alasan) {
     const mapelStr = activeMapels.length > 0 ? activeMapels.join(", ") : "Tidak ada mapel aktif";
     el.innerHTML = `<strong>Tanggal:</strong> ${tglStr} | <strong>Jam:</strong> ${jamStr} | <strong>Aktif:</strong> ${mapelStr}`;
   }
-
   function simpanAktivasiMapel() {
     let selected = [];
     document.querySelectorAll('.chk-mapel-guru:checked').forEach(c => selected.push(c.value));
@@ -1810,7 +1815,6 @@ function pemicuAutoSubmitOtomatis(alasan) {
     tanggalUjianAktif = document.getElementById('inputTanggalUjian').value || getTodayLocalISO();
     jamMulaiAktif = document.getElementById('inputJamMulai').value;
     jamSelesaiAktif = document.getElementById('inputJamSelesai').value;
-
     const payloadConfig = {
       activeMapels: selected,
       tanggalUjian: tanggalUjianAktif,
@@ -1818,9 +1822,7 @@ function pemicuAutoSubmitOtomatis(alasan) {
       jamSelesai: jamSelesaiAktif,
       updatedAt: Date.now()
     };
-
     db.ref(APP_PROFILE.kelasNode + '/Config_Ujian').set(payloadConfig);
-
     panggilGAS("setMataPelajaranAktif", { payloadConfig: payloadConfig })
       .then(() => {
         updateRingkasanAktivasiGuru();
